@@ -28,7 +28,7 @@ class ClaimSearchTool:
         """
         # Use browser-use's ChatOpenAI (reads API key from .env automatically)
         self.llm = ChatOpenAI(
-            model=model,
+            model="gpt-4o",
             temperature=0
         )
     
@@ -50,6 +50,13 @@ class ClaimSearchTool:
             {instruction}
             
             IMPORTANT: Return the results as structured JSON format with all the information you found.
+            
+            ### TIPS FOR SUCCESS:
+            1. **SEARCHING**: When asked to search, FIRST find the input field (look for 'Search', 'Filter', or magnifying glass icons).
+            2. **TYPING**: Use the 'input_text' action to type into fields. DO NOT use 'find_text' to search; 'find_text' is only for verifying result existence.
+            3. **FILTERS**: If no search box is visible, check if there's a "Filter" button that needs to be clicked to reveal it.
+            4. **RETRY**: If a click fails, try a slightly different selector or use a different navigation path.
+            
             If you're searching for claims, return them in this format:
             {{
                 "success": true,
