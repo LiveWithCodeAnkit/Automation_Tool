@@ -72,6 +72,7 @@ class ClaimSearchTool:
                 "total_found": ...
             }}
             
+            
             If it's a different task, return the results in a clear JSON structure.
             """
             
