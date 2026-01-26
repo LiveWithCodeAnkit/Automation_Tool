@@ -3,7 +3,7 @@ Amazon Auto-Buyer Tool (LOCAL - FREE)
 FIXED: Updated to latest browser-use API
 """
 
-from browser_use.llm.openai.chat import ChatOpenAI
+from langchain_openai import ChatOpenAI
 from browser_use import Agent
 from typing import Optional, Dict, Any
 import asyncio
@@ -11,7 +11,7 @@ import json
 import re
 import os
 from dotenv import load_dotenv
-from browser_use.browser.profile import BrowserProfile
+from browser_use.browser.browser import Browser, BrowserConfig
 
 load_dotenv()
 
@@ -91,10 +91,11 @@ class AmazonAutoBuyer:
             """
             
             # Create agent with headful browser
+            browser = Browser(config=BrowserConfig(headless=False))
             agent = Agent(
                 task=task_description,
                 llm=self.llm,
-                browser_profile=BrowserProfile(headless=False)
+                browser=browser
             )
             
             # Run agent
@@ -142,10 +143,12 @@ class AmazonAutoBuyer:
             }}
             """
             
+            # Create browser and agent
+            browser = Browser(config=BrowserConfig(headless=False))
             agent = Agent(
                 task=task_description,
                 llm=self.llm,
-                browser_profile=BrowserProfile(headless=False)
+                browser=browser
             )
             
             history = await agent.run()

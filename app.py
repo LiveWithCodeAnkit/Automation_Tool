@@ -7,13 +7,45 @@ import streamlit as st
 import os
 import asyncio
 import sys
+import warnings
+
+# Suppress warnings usually seen on Windows with ProactorEventLoop
+if sys.platform == 'win32':
+    warnings.filterwarnings("ignore", category=ResourceWarning)
+    # Optional: Suppress the specific unclosed transport warning if needed
+    # logging.getLogger('asyncio').setLevel(logging.ERROR)
+
 from dotenv import load_dotenv
 from amazon_tool import AmazonAutoBuyer
-from claim_search_tool import ClaimSearchTool
+from universal_browser_tool import UniversalBrowserTool
 
-# Fix for Windows asyncio loop policy to allow subprocesses (Playwright)
+# Fix for Windows asyncio loop policy and suppress cleanup errors
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
+class StderrFilter:
+    """Filter specific noise from stderr (asyncio connection cleanup on Windows)"""
+    def __init__(self, original_stderr):
+        self.original_stderr = original_stderr
+    
+    def write(self, s):
+        # Filter out the specific "closed pipe" and "Task was destroyed" noise
+        if "I/O operation on closed pipe" in s or \
+           "Task was destroyed but it is pending" in s or \
+           "unclosed transport" in s or \
+           "Exception ignored in:" in s:
+            return
+        self.original_stderr.write(s)
+        
+    def flush(self):
+        self.original_stderr.flush()
+
+# Apply the filter globally
+sys.stderr = StderrFilter(sys.stderr)
+
+def custom_exception_handler(loop, context):
+    # Keep the custom handler as a second layer of defense
+    pass
 
 # Load environment variables
 load_dotenv()
@@ -80,7 +112,7 @@ def main():
     st.sidebar.title("📋 Navigation")
     tool_choice = st.sidebar.radio(
         "Select Tool",
-        ["🏠 Home", "🛒 Amazon Auto-Buyer", "🔍 Claim Search Tool"],
+        ["🏠 Home", "🛒 Amazon Auto-Buyer", "🤖 Universal Automation"],
         index=0
     )
     
@@ -101,8 +133,8 @@ def main():
         show_home()
     elif tool_choice == "🛒 Amazon Auto-Buyer":
         show_amazon_tool(openai_api_key, model_choice)
-    elif tool_choice == "🔍 Claim Search Tool":
-        show_claim_tool(openai_api_key, model_choice)
+    elif tool_choice == "🤖 Universal Automation":
+        show_universal_tool(openai_api_key, model_choice)
 
 def show_home():
     """Display home page with tool descriptions"""
@@ -119,10 +151,11 @@ def show_home():
     - Input product details and payment information
     - Complete checkout automatically (stops before final payment for safety)
     
-    #### 🔍 Claim Search Tool
-    - Login to specific websites
-    - Search for claims or specific information
-    - Retrieve structured results
+    #### 🤖 Universal Automation
+    - **Upgraded & Powerful**: Do almost anything on the web!
+    - Login, Search, Scrape, Extract Data
+    - Full Proxy & Timeout Support
+    - Handle complex multi-step workflows
     
     ### Getting Started:
     1. Make sure you have your **OpenAI API key** (or compatible LLM) set in `.env` file
@@ -177,7 +210,10 @@ def show_amazon_tool(api_key: str, model: str):
                         # API key now loaded from .env automatically
                         tool = AmazonAutoBuyer(model=model)
                         # Run async function
-                        result = asyncio.run(tool.purchase(
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        loop.set_exception_handler(custom_exception_handler)
+                        result = loop.run_until_complete(tool.purchase(
                             email=amazon_email,
                             password=amazon_password,
                             product_url=product_url,
@@ -186,6 +222,7 @@ def show_amazon_tool(api_key: str, model: str):
                             gift_card_code=gift_card_code if gift_card_code else None,
                             shipping_speed=shipping_speed
                         ))
+                        loop.close()
                         
                         if result.get("success"):
                             st.success("✅ Purchase process completed!")
@@ -199,92 +236,97 @@ def show_amazon_tool(api_key: str, model: str):
                         st.error(f"❌ An error occurred: {str(e)}")
                         st.info("💡 Make sure browser-use is properly installed and you have a valid API key")
 
-def show_claim_tool(api_key: str, model: str):
-    """Display Claim Search tool interface"""
-    st.header("🔍 Claim Search Tool")
-    st.markdown("**Simple & Flexible**: Just describe what you want to do in natural language!")
+def show_universal_tool(api_key: str, model: str):
+    """Display Universal Automation tool interface"""
+    st.header("🤖 Universal Browser Automation")
+    st.markdown("**Power Limitless**: Describe any web task, and I'll do it!")
     
+    # Advanced Settings
+    with st.expander("⚙️ Advanced Settings (Proxy & Timeout)", expanded=False):
+        col_proxy1, col_proxy2 = st.columns(2)
+        with col_proxy1:
+            proxy_server = st.text_input("Proxy Server (Optional)", placeholder="http://1.2.3.4:8080")
+            timeout = st.slider("Timeout (Seconds)", min_value=30, max_value=600, value=120, step=30)
+            headless = st.checkbox("Headless Mode (Faster)", value=False)
+        with col_proxy2:
+            proxy_user = st.text_input("Proxy Username (Optional)")
+            proxy_pass = st.text_input("Proxy Password (Optional)", type="password")
+            
     # Example instructions
     with st.expander("📝 Example Instructions", expanded=False):
         st.markdown("""
-        **Example 1 - Search Claims:**
+        **Example 1 - General Search:**
         ```
-        Go to https://example.com, login with email user@example.com and password mypass123, 
-        then search for all insurance claims from 2024 and return them as JSON with claim ID, 
-        status, date, and amount.
-        ```
-        
-        **Example 2 - Get Specific Claim:**
-        ```
-        Login to https://claims.example.com with username john@email.com and password pass123, 
-        find claim number CLM-2024-001 and return all its details including status history.
+        Go to google.com, search for 'latest AI trends 2024', 
+        click on the first 3 non-ad results, and summarize them.
         ```
         
-        **Example 3 - Search with Filters:**
+        **Example 2 - Claim Search (Legacy):**
         ```
-        Go to https://portal.example.com, login with email test@test.com and password test123, 
-        navigate to claims section, filter claims from January 2024 to December 2024, 
-        and return all pending claims with their details.
+        Go to https://example.com/login, login with user 'test' and pass '123', 
+        navigate to claims, find claim #12345, and extract status.
+        ```
+        
+        **Example 3 - Data Extraction:**
+        ```
+        Go to amazon.com, search for 'gaming laptop', 
+        extract the price and rating of the first 5 items into JSON.
         ```
         """)
     
-    with st.form("claim_form"):
-        st.subheader("📋 Enter Your Task Instructions")
+    with st.form("universal_form"):
+        st.subheader("📋 Task Instructions")
         
         instruction = st.text_area(
             "What do you want to do?",
             height=150,
-            placeholder="Example: Go to https://example.com, login with email user@example.com and password mypass123, then search for all claims from 2024 and return them as JSON...",
-            help="Describe your task in natural language. Include website URL, login credentials, and what you want to search/find."
+            placeholder="Describe your task in natural language...",
+            help="Be specific! Include URLs, credentials, and desired output format."
         )
         
         submitted = st.form_submit_button("🚀 Execute Task", use_container_width=True)
         
         if submitted:
-            if not instruction or len(instruction.strip()) < 20:
-                st.error("❌ Please provide detailed instructions (at least 20 characters)")
-                st.info("💡 Include: Website URL, login credentials, and what you want to do")
+            if not instruction or len(instruction.strip()) < 10:
+                st.error("❌ Please provide instructions")
             else:
-                with st.spinner("🔄 Executing your task... This may take a minute."):
+                with st.spinner("🔄 Executing task..."):
                     try:
-                        # API key now loaded from .env automatically
-                        tool = ClaimSearchTool(model=model)
-                        # Run async function with execute_task method
-                        result = asyncio.run(tool.execute_task(instruction=instruction.strip()))
+                        # Initialize tool
+                        tool = UniversalBrowserTool(model=model)
+                        
+                        # run async
+                        loop = asyncio.new_event_loop()
+                        asyncio.set_event_loop(loop)
+                        loop.set_exception_handler(custom_exception_handler)
+                        result = loop.run_until_complete(tool.execute_task(
+                            instruction=instruction.strip(),
+                            proxy_server=proxy_server if proxy_server else None,
+                            proxy_username=proxy_user if proxy_user else None,
+                            proxy_password=proxy_pass if proxy_pass else None,
+                            timeout=timeout,
+                            headless=headless
+                        ))
+                        loop.close()
                         
                         if result.get("success"):
-                            st.success("✅ Task completed successfully!")
+                            st.success("✅ Task Completed!")
                             
-                            # Display results
-                            result_data = result.get("result", {})
+                            # Show structured result
+                            if result.get("result"):
+                                st.subheader("📊 Output")
+                                st.json(result["result"])
                             
-                            # If claims found, display them nicely
-                            if isinstance(result_data, dict) and "claims" in result_data:
-                                claims = result_data.get("claims", [])
-                                if claims:
-                                    st.subheader(f"📋 Found {len(claims)} Claim(s):")
-                                    for i, claim in enumerate(claims, 1):
-                                        with st.expander(f"Claim #{i}: {claim.get('id', 'N/A')}", expanded=False):
-                                            st.json(claim)
-                                else:
-                                    st.info("No claims found")
-                            
-                            # Show full JSON result
-                            with st.expander("📄 Full Result (JSON)", expanded=False):
-                                st.json(result)
-                            
-                            # Show raw output if available
-                            if result.get("raw_output"):
-                                with st.expander("🔍 Raw Output", expanded=False):
-                                    st.text(result["raw_output"])
+                            # Show raw output
+                            with st.expander("🔍 Raw Agent Output", expanded=False):
+                                st.text(result.get("raw_output", ""))
                         else:
-                            st.error(f"❌ Error: {result.get('error', 'Unknown error')}")
-                            if result.get("message"):
-                                st.info(f"ℹ️ {result['message']}")
+                            st.error(f"❌ Error: {result.get('error')}")
+                            st.warning(result.get("message"))
+                            
                     except Exception as e:
-                        st.error(f"❌ An error occurred: {str(e)}")
-                        st.info("💡 Make sure browser-use is properly installed and you have a valid API key")
-                        st.info("💡 Check that your instructions are clear and include all necessary details")
+                        st.error(f"❌ Critical Error: {str(e)}")
+                        st.info("Check your settings and try again.")
 
 if __name__ == "__main__":
     main()

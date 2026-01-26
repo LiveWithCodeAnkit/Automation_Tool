@@ -47,7 +47,7 @@ python -m venv venv
 ```bash
 pip install -r requirements.txt
 ```
-
+.\venv312\Scripts\pip install playwright
 5. **Set up environment variables**:
    - Create a `.env` file in the project root
    - Add your OpenAI API key (or compatible LLM):
